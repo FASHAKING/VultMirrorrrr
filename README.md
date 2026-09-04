@@ -21,7 +21,33 @@ Monitor Solana contract addresses from ANY Telegram channel and instantly forwar
 - Telegram Bot Token (from [@BotFather](https://t.me/BotFather))
 - Your Telegram User ID
 
-### Installation
+### One-command VPS setup (recommended)
+
+On an Ubuntu/Debian-style Linux VPS with Python 3.10+ and `sudo`, run this from
+the cloned repository:
+
+```bash
+./setup.sh
+```
+
+The installer prompts for your Telegram bot token and admin user ID, creates an
+isolated virtual environment, installs dependencies, initializes the database,
+and offers to install a `systemd` service that starts VultMirror now and after
+every reboot. Your credentials are written to `.env` with owner-only permissions.
+
+For a foreground-only install (for example, while testing), use:
+
+```bash
+./setup.sh --no-service
+```
+
+After installing the service, follow its logs with:
+
+```bash
+sudo journalctl -u vultmirror -f
+```
+
+### Manual installation
 
 1. **Clone the repository**
    ```bash
