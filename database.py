@@ -13,8 +13,11 @@ import os
 from logger import logger
 
 class Database:
-    def __init__(self, db_path: str = "bot_data_multiuser.db"):
-        self.db_path = db_path
+    def __init__(self, db_path: Optional[str] = None):
+        # An explicit path remains useful for tests and tools, while the
+        # environment variable lets VPS deployments keep their data outside
+        # of the project directory without changing application code.
+        self.db_path = db_path or os.getenv("DB_PATH", "bot_data_multiuser.db")
         self.encryption_key = self._get_or_create_encryption_key()
         self.cipher = Fernet(self.encryption_key)
         self._init_database()

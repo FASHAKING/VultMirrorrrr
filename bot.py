@@ -111,7 +111,7 @@ class MultiUserCABot:
     # ==================== SOLANA CA DETECTION ====================
     
     def is_valid_solana_address(self, address: str) -> bool:
-        """Validate Solana address (from your original bot)"""
+        """Return whether *address* is a 32-byte Solana public key in base58."""
         if len(address) < 32 or len(address) > 44:
             return False
         if address in IGNORE_ADDRESSES:
@@ -119,12 +119,21 @@ class MultiUserCABot:
         for prefix in IGNORE_PREFIXES:
             if address.startswith(prefix):
                 return False
-        if address.islower():
-            return False
         valid_chars = set('123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz')
         if not all(c in valid_chars for c in address):
             return False
-        return True
+
+        # A base58-looking value is not necessarily a Solana public key.  A
+        # public key must decode to exactly 32 bytes.  Decode locally rather
+        # than adding a runtime dependency just for validation.
+        alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+        value = 0
+        for char in address:
+            value = value * 58 + alphabet.index(char)
+
+        decoded = value.to_bytes((value.bit_length() + 7) // 8, 'big')
+        decoded = b'\x00' * (len(address) - len(address.lstrip('1'))) + decoded
+        return len(decoded) == 32
     
     def extract_solana_cas(self, text: str) -> Optional[str]:
         """
@@ -135,21 +144,29 @@ class MultiUserCABot:
         if not text:
             return None
         
-        potential_addresses = re.findall(SOLANA_CA_PATTERN, text)
+        potential_addresses = list(re.finditer(SOLANA_CA_PATTERN, text))
         if not potential_addresses:
             return None
+
+        url_spans = [
+            match.span() for match in re.finditer(
+                r'(?:https?://[^\s]+|(?:solscan\.io|dexscreener\.com|pump\.fun|birdeye\.so)[^\s]*)',
+                text,
+                flags=re.IGNORECASE,
+            )
+        ]
         
         # Filter addresses
         seen = set()
         filtered_addresses = []
-        for addr in potential_addresses:
+        for address_match in potential_addresses:
+            addr = address_match.group(0)
             if addr.lower() in seen:
                 continue
             seen.add(addr.lower())
             
             # Skip if in URL - excludes CAs found in trading platform URLs
-            url_pattern = rf'(https?://[^\s]*{re.escape(addr)}|solscan\.io[^\s]*{re.escape(addr)}|dexscreener[^\s]*{re.escape(addr)}|pump\.fun[^\s]*{re.escape(addr)}|birdeye\.so[^\s]*{re.escape(addr)})'
-            if re.search(url_pattern, text):
+            if any(start <= address_match.start() and address_match.end() <= end for start, end in url_spans):
                 continue
             
             filtered_addresses.append(addr)
@@ -420,6 +437,10 @@ class MultiUserCABot:
         """Handle /stats command"""
         user_id = update.effective_user.id
         stats = self.db.get_user_stats(user_id)
+
+        if not stats:
+            await update.message.reply_text("Use /start first to create your VultMirror account.")
+            return
         
         message = "📊 *Your Statistics*\n\n"
         message += f"💎 CAs Today: {stats['cas_today']}/{stats['daily_limit']}\n"
